@@ -3,7 +3,9 @@
  * Handles AI model calls, central financial system prompt, tool orchestration, and memory context.
  */
 
-import { GoogleGenAI } from '@google/genai';
+import { GoogleGenerativeAI } from '@google/generative-ai';
+
+import { groqService } from './groq.service.js';
 
 export const SYSTEM_PROMPT = `
 You are Equora AI, a high-precision conversational AI specialized in financial markets, equities, technical analysis, fundamental metrics, investing, macroeconomics, portfolio management, and financial document analysis.
@@ -23,7 +25,7 @@ class GeminiService {
     const apiKey = process.env.GEMINI_API_KEY;
     if (apiKey && apiKey !== 'your_gemini_api_key_here') {
       try {
-        this.aiClient = new GoogleGenAI({ apiKey });
+        this.aiClient = new GoogleGenerativeAI(apiKey);
       } catch (err) {
         console.warn('[GeminiService] Initializing without active API key (using dynamic financial engine fallback)');
       }
@@ -33,21 +35,23 @@ class GeminiService {
   async generateAnswer(prompt: string, contextMessages: any[] = [], toolResults: any[] = []): Promise<string> {
     if (this.aiClient) {
       try {
-        const response = await this.aiClient.models.generateContent({
-          model: 'gemini-2.5-flash',
-          contents: [
-            { role: 'user', parts: [{ text: `${SYSTEM_PROMPT}\n\nUser Question: ${prompt}\n\nTool Results: ${JSON.stringify(toolResults)}` }] }
-          ]
-        });
-        if (response && response.text) {
-          return response.text;
+        const model = this.aiClient.getGenerativeModel({ model: 'gemini-1.5-flash' });
+        const response = await model.generateContent(`${SYSTEM_PROMPT}\n\nUser Question: ${prompt}\n\nTool Results: ${JSON.stringify(toolResults)}`);
+        if (response && response.response) {
+          return response.response.text();
         }
       } catch (err) {
-        console.error('[Gemini API Error, falling back to local financial reasoning engine]:', err);
+        console.error('[Gemini API Error, checking Groq/fallback]:', err);
       }
     }
 
-    // Local Reasoning Engine Fallback when API Key is pending or in mock mode
+    // Try Groq API if GROQ_API_KEY is configured
+    if (groqService.isAvailable()) {
+      const groqAns = await groqService.generateAnswer(prompt, contextMessages, toolResults);
+      if (groqAns) return groqAns;
+    }
+
+    // Local Financial Reasoning Engine Fallback
     return this.synthesizeLocalResponse(prompt, toolResults);
   }
 

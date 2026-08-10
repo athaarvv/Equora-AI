@@ -23,11 +23,21 @@ app.use(cors());
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
+import { groqService } from './services/groq.service.js';
+
 // Health Check
 app.get('/api/health', (req, res) => {
+  const geminiConfigured = !!(process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY !== 'your_gemini_api_key_here');
+  const groqConfigured = groqService.isAvailable();
+
   res.json({
     status: 'online',
     service: 'EQUORA AI Backend Orchestrator',
+    aiProviders: {
+      gemini: geminiConfigured ? 'configured' : 'fallback-mode',
+      groq: groqConfigured ? 'configured' : 'not-configured',
+      localEngine: 'active'
+    },
     timestamp: new Date().toISOString()
   });
 });

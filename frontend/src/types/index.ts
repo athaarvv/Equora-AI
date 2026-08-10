@@ -14,6 +14,7 @@ export interface StockQuote {
   exchange: string;
   sector: string;
   timestamp: string;
+  tickStatus?: 'up' | 'down' | 'neutral';
 }
 
 export interface NewsSource {

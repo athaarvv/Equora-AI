@@ -1,8 +1,5 @@
-/**
- * EQUORA AI Market Data Service
- * Provides quotes, historical prices, company metrics, and indices.
- * Includes intelligent mock fallbacks for Indian (NSE/BSE) & US stocks.
- */
+import yahooFinanceLib from 'yahoo-finance2';
+const yahooFinance = (yahooFinanceLib as any).default || yahooFinanceLib;
 
 export interface StockQuote {
   symbol: string;
@@ -20,10 +17,12 @@ export interface StockQuote {
   exchange: string;
   sector: string;
   timestamp: string;
+  tickStatus?: 'up' | 'down' | 'neutral';
 }
 
 export interface HistoricalPrice {
   date: string;
+  time?: string;
   open: number;
   high: number;
   low: number;
@@ -31,162 +30,164 @@ export interface HistoricalPrice {
   volume: number;
 }
 
+const DEFAULT_SYMBOLS = [
+  'TCS.NS', 'RELIANCE.NS', 'INFY.NS', 'HDFCBANK.NS', 'ICICIBANK.NS',
+  'TATAMOTORS.NS', 'SBIN.NS', 'WIPRO.NS', 'NVDA', 'AAPL', 'MSFT', 'TSLA', 'AMZN'
+];
+
 class MarketDataService {
-  private mockQuotes: Record<string, StockQuote> = {
-    TCS: {
-      symbol: 'TCS',
-      name: 'Tata Consultancy Services Ltd.',
-      price: 3421.50,
-      change: -45.20,
-      changePercent: -1.30,
-      marketCapCr: 1238450,
-      peRatio: 28.4,
-      pbRatio: 12.1,
-      eps: 120.45,
-      fiftyTwoWeekHigh: 4254.75,
-      fiftyTwoWeekLow: 3150.00,
-      volume: 2450100,
-      exchange: 'NSE',
-      sector: 'Information Technology',
-      timestamp: new Date().toISOString()
-    },
-    RELIANCE: {
-      symbol: 'RELIANCE',
-      name: 'Reliance Industries Ltd.',
-      price: 2890.10,
-      change: 32.50,
-      changePercent: 1.14,
-      marketCapCr: 1954300,
-      peRatio: 26.2,
-      pbRatio: 2.3,
-      eps: 110.30,
-      fiftyTwoWeekHigh: 3024.90,
-      fiftyTwoWeekLow: 2220.00,
-      volume: 4890000,
-      exchange: 'NSE',
-      sector: 'Energy & Telecommunications',
-      timestamp: new Date().toISOString()
-    },
-    INFY: {
-      symbol: 'INFY',
-      name: 'Infosys Limited',
-      price: 1540.75,
-      change: -12.30,
-      changePercent: -0.79,
-      marketCapCr: 639800,
-      peRatio: 24.1,
-      pbRatio: 7.8,
-      eps: 63.90,
-      fiftyTwoWeekHigh: 1733.00,
-      fiftyTwoWeekLow: 1355.00,
-      volume: 3100000,
-      exchange: 'NSE',
-      sector: 'Information Technology',
-      timestamp: new Date().toISOString()
-    },
-    NVIDIA: {
-      symbol: 'NVDA',
-      name: 'NVIDIA Corporation',
-      price: 124.50,
-      change: 4.20,
-      changePercent: 3.49,
-      marketCapCr: 3060000,
-      peRatio: 68.5,
-      pbRatio: 45.2,
-      eps: 1.82,
-      fiftyTwoWeekHigh: 140.76,
-      fiftyTwoWeekLow: 40.85,
-      volume: 45000000,
-      exchange: 'NASDAQ',
-      sector: 'Semiconductors / AI',
-      timestamp: new Date().toISOString()
-    },
-    NIFTY: {
-      symbol: 'NIFTY50',
-      name: 'NIFTY 50 Index',
-      price: 24320.15,
-      change: 85.40,
-      changePercent: 0.35,
-      marketCapCr: 0,
-      peRatio: 22.8,
-      pbRatio: 3.9,
-      eps: 1066.00,
-      fiftyTwoWeekHigh: 25078.00,
-      fiftyTwoWeekLow: 19250.00,
-      volume: 0,
-      exchange: 'NSE',
-      sector: 'Market Index',
-      timestamp: new Date().toISOString()
-    }
-  };
+  private lastPrices: Record<string, number> = {};
 
-  async getQuote(symbolInput: string): Promise<StockQuote> {
-    const key = symbolInput.toUpperCase().replace('.NS', '').trim();
-    if (this.mockQuotes[key]) {
-      return this.mockQuotes[key];
+  private mapYahooQuoteToStockQuote(quote: any): StockQuote {
+    const symbol = quote.symbol;
+    const price = quote.regularMarketPrice || 0;
+    
+    let tickStatus: 'up' | 'down' | 'neutral' = 'neutral';
+    if (this.lastPrices[symbol]) {
+      if (price > this.lastPrices[symbol]) tickStatus = 'up';
+      else if (price < this.lastPrices[symbol]) tickStatus = 'down';
+    }
+    this.lastPrices[symbol] = price;
+
+    const exchange = quote.exchange === 'NSI' ? 'NSE' : quote.exchange || 'Unknown';
+    const isIndian = exchange === 'NSE' || exchange === 'BSE' || symbol.endsWith('.NS') || symbol.endsWith('.BO');
+    
+    // Market cap conversion to match UI expectations (Crores for Indian, plain value or Billions for US)
+    let marketCapCr = quote.marketCap || 0;
+    if (isIndian) {
+      marketCapCr = Math.floor(marketCapCr / 10000000); // Rough conversion to Crores for display
     }
 
-    // Default dynamic lookup fallback
     return {
-      symbol: key,
-      name: `${key} Corp`,
-      price: 1250.00,
-      change: 15.40,
-      changePercent: 1.25,
-      marketCapCr: 450000,
-      peRatio: 21.5,
-      pbRatio: 4.2,
-      eps: 58.14,
-      fiftyTwoWeekHigh: 1500.00,
-      fiftyTwoWeekLow: 980.00,
-      volume: 1200000,
-      exchange: 'NSE',
-      sector: 'General Enterprise',
-      timestamp: new Date().toISOString()
+      symbol: symbol.replace('.NS', ''),
+      name: quote.shortName || quote.longName || symbol,
+      price: Number(price.toFixed(2)),
+      change: Number((quote.regularMarketChange || 0).toFixed(2)),
+      changePercent: Number((quote.regularMarketChangePercent || 0).toFixed(2)),
+      marketCapCr,
+      peRatio: quote.trailingPE ? Number(quote.trailingPE.toFixed(2)) : 0,
+      pbRatio: quote.priceToBook ? Number(quote.priceToBook.toFixed(2)) : 0,
+      eps: quote.epsTrailingTwelveMonths ? Number(quote.epsTrailingTwelveMonths.toFixed(2)) : 0,
+      fiftyTwoWeekHigh: quote.fiftyTwoWeekHigh || 0,
+      fiftyTwoWeekLow: quote.fiftyTwoWeekLow || 0,
+      volume: quote.regularMarketVolume || 0,
+      exchange: isIndian ? 'NSE' : exchange,
+      sector: quote.sector || (isIndian ? 'Indian Equities' : 'US Tech'),
+      timestamp: new Date().toISOString(),
+      tickStatus
     };
   }
 
+  async getAllQuotes(): Promise<StockQuote[]> {
+    try {
+      const quotes = await yahooFinance.quote(DEFAULT_SYMBOLS) as any[];
+      return quotes.map((q: any) => this.mapYahooQuoteToStockQuote(q));
+    } catch (error) {
+      console.error('Error fetching all quotes:', error);
+      return [];
+    }
+  }
+
+  async getQuote(symbolInput: string): Promise<StockQuote> {
+    try {
+      // Basic normalization: if it's an Indian stock without suffix, try adding .NS
+      let symbol = symbolInput.toUpperCase();
+      if (!symbol.includes('.') && DEFAULT_SYMBOLS.includes(`${symbol}.NS`)) {
+        symbol = `${symbol}.NS`;
+      }
+      
+      const quote = await yahooFinance.quote(symbol) as any;
+      return this.mapYahooQuoteToStockQuote(quote);
+    } catch (error) {
+      console.error(`Error fetching quote for ${symbolInput}:`, error);
+      throw new Error(`Failed to fetch quote for ${symbolInput}`);
+    }
+  }
+
   async getHistoricalPrices(symbolInput: string, period: string = '1Y'): Promise<HistoricalPrice[]> {
-    const quote = await this.getQuote(symbolInput);
-    const basePrice = quote.price;
-    const points = period === '1M' ? 30 : period === '6M' ? 180 : 365;
+    try {
+      let symbol = symbolInput.toUpperCase();
+      if (!symbol.includes('.') && DEFAULT_SYMBOLS.includes(`${symbol}.NS`)) {
+        symbol = `${symbol}.NS`;
+      }
 
-    const list: HistoricalPrice[] = [];
-    let current = basePrice * 0.82; // Start from earlier historical price
+      const end = new Date();
+      const start = new Date();
+      let interval: '1d' | '1wk' | '1mo' | '1m' | '5m' = '1d';
 
-    for (let i = points; i >= 0; i--) {
-      const date = new Date();
-      date.setDate(date.getDate() - i);
+      if (period === '1D') {
+        start.setDate(start.getDate() - 1); // Get past 1-2 days to ensure we have intraday ticks
+        interval = '5m';
+      } else if (period === '1W') {
+        start.setDate(start.getDate() - 7);
+        interval = '1d';
+      } else if (period === '1M') {
+        start.setMonth(start.getMonth() - 1);
+        interval = '1d';
+      } else if (period === '6M') {
+        start.setMonth(start.getMonth() - 6);
+        interval = '1wk';
+      } else { // 1Y
+        start.setFullYear(start.getFullYear() - 1);
+        interval = '1wk';
+      }
 
-      const fluctuation = (Math.sin(i / 10) * 0.015 + (Math.random() - 0.48) * 0.02);
-      current = Math.max(10, current * (1 + fluctuation));
+      const queryOptions = { period1: start.toISOString(), period2: end.toISOString(), interval };
+      const result = await yahooFinance.chart(symbol, queryOptions as any) as any;
+      
+      if (!result.quotes || result.quotes.length === 0) return [];
 
-      list.push({
-        date: date.toISOString().split('T')[0],
-        open: Number((current * 0.995).toFixed(2)),
-        high: Number((current * 1.015).toFixed(2)),
-        low: Number((current * 0.988).toFixed(2)),
-        close: Number(current.toFixed(2)),
-        volume: Math.floor(1000000 + Math.random() * 2000000)
-      });
+      return result.quotes.map((q: any) => {
+        const dateObj = new Date(q.date);
+        let label = dateObj.toISOString().split('T')[0];
+        let timeStr = dateObj.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+        return {
+          date: label,
+          time: period === '1D' ? timeStr : label,
+          open: Number(q.open?.toFixed(2) || 0),
+          high: Number(q.high?.toFixed(2) || 0),
+          low: Number(q.low?.toFixed(2) || 0),
+          close: Number(q.close?.toFixed(2) || 0),
+          volume: q.volume || 0
+        };
+      }).filter((q: any) => q.close > 0);
+    } catch (error) {
+      console.error(`Error fetching historical prices for ${symbolInput}:`, error);
+      return [];
     }
-
-    // Ensure last close matches quote price
-    if (list.length > 0) {
-      list[list.length - 1].close = basePrice;
-    }
-
-    return list;
   }
 
   async getMarketIndices() {
-    return [
-      { name: 'NIFTY 50', value: '24,320.15', change: '+85.40 (+0.35%)', status: 'up' },
-      { name: 'SENSEX', value: '79,705.80', change: '+240.10 (+0.30%)', status: 'up' },
-      { name: 'BANK NIFTY', value: '50,450.30', change: '-120.50 (-0.24%)', status: 'down' },
-      { name: 'NASDAQ', value: '17,689.40', change: '+185.60 (+1.06%)', status: 'up' },
-      { name: 'S&P 500', value: '5,540.20', change: '+32.10 (+0.58%)', status: 'up' }
-    ];
+    try {
+      const symbols = ['^NSEI', '^BSESN', '^NSEBANK', '^IXIC', '^GSPC'];
+      const names: Record<string, string> = {
+        '^NSEI': 'NIFTY 50',
+        '^BSESN': 'SENSEX',
+        '^NSEBANK': 'BANK NIFTY',
+        '^IXIC': 'NASDAQ',
+        '^GSPC': 'S&P 500'
+      };
+      
+      const quotes = await yahooFinance.quote(symbols) as any[];
+      
+      return quotes.map((q: any) => {
+        const change = q.regularMarketChange || 0;
+        const pct = q.regularMarketChangePercent || 0;
+        const isUp = change >= 0;
+        const sign = isUp ? '+' : '';
+        
+        return {
+          name: names[q.symbol] || q.symbol,
+          value: q.regularMarketPrice?.toLocaleString(undefined, { minimumFractionDigits: 2 }) || '0',
+          change: `${sign}${change.toFixed(2)} (${sign}${pct.toFixed(2)}%)`,
+          isUp
+        };
+      });
+    } catch (error) {
+      console.error('Error fetching indices:', error);
+      return [];
+    }
   }
 }
 

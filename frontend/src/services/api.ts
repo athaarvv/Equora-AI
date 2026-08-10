@@ -29,8 +29,18 @@ export const api = {
   },
 
   // Market APIs
+  async getAllQuotes() {
+    const res = await axios.get<StockQuote[]>(`${API_BASE}/market/all`);
+    return res.data;
+  },
+
   async getQuote(symbol: string) {
     const res = await axios.get<StockQuote>(`${API_BASE}/market/quote/${symbol}`);
+    return res.data;
+  },
+
+  async getHistory(symbol: string, period: string = '1Y') {
+    const res = await axios.get(`${API_BASE}/market/history/${symbol}?period=${period}`);
     return res.data;
   },
 

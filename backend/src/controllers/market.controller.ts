@@ -1,6 +1,11 @@
 import { Request, Response } from 'express';
 import { marketDataService } from '../services/marketData.service.js';
 
+export const getAllQuotes = async (req: Request, res: Response) => {
+  const quotes = await marketDataService.getAllQuotes();
+  res.json(quotes);
+};
+
 export const getQuote = async (req: Request, res: Response) => {
   const { symbol } = req.params;
   const quote = await marketDataService.getQuote(symbol);
