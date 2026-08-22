@@ -1,5 +1,9 @@
-import yahooFinanceLib from 'yahoo-finance2';
-const yahooFinance = (yahooFinanceLib as any).default || yahooFinanceLib;
+import axios from 'axios';
+import YahooFinance from 'yahoo-finance2';
+const yahooFinance = new YahooFinance();
+
+const FINNHUB_API_KEY = process.env.FINNHUB_API_KEY || 'da3jhppr01qual4qdiugda3jhppr01qual4qdiv0';
+const ALPHA_VANTAGE_API_KEY = 'demo';
 
 export interface StockQuote {
   symbol: string;
@@ -7,17 +11,18 @@ export interface StockQuote {
   price: number;
   change: number;
   changePercent: number;
-  marketCapCr: number;
-  peRatio: number;
-  pbRatio: number;
-  eps: number;
+  marketCapCr?: number;
+  peRatio?: number;
+  pbRatio?: number;
+  eps?: number;
   fiftyTwoWeekHigh: number;
   fiftyTwoWeekLow: number;
-  volume: number;
+  volume?: number;
   exchange: string;
-  sector: string;
+  sector?: string;
   timestamp: string;
   tickStatus?: 'up' | 'down' | 'neutral';
+  currency?: string;
 }
 
 export interface HistoricalPrice {
@@ -35,8 +40,20 @@ const DEFAULT_SYMBOLS = [
   'TATAMOTORS.NS', 'SBIN.NS', 'WIPRO.NS', 'NVDA', 'AAPL', 'MSFT', 'TSLA', 'AMZN'
 ];
 
+const INDIAN_API_BASE = 'https://stock.indianapi.in';
+
 class MarketDataService {
   private lastPrices: Record<string, number> = {};
+
+  private get headers() {
+    return {
+      'X-Api-Key': process.env.INDIAN_API_KEY || ''
+    };
+  }
+
+  private get yf() {
+    return yahooFinance;
+  }
 
   private mapYahooQuoteToStockQuote(quote: any): StockQuote {
     const symbol = quote.symbol;
@@ -52,10 +69,9 @@ class MarketDataService {
     const exchange = quote.exchange === 'NSI' ? 'NSE' : quote.exchange || 'Unknown';
     const isIndian = exchange === 'NSE' || exchange === 'BSE' || symbol.endsWith('.NS') || symbol.endsWith('.BO');
     
-    // Market cap conversion to match UI expectations (Crores for Indian, plain value or Billions for US)
     let marketCapCr = quote.marketCap || 0;
     if (isIndian) {
-      marketCapCr = Math.floor(marketCapCr / 10000000); // Rough conversion to Crores for display
+      marketCapCr = Math.floor(marketCapCr / 10000000); 
     }
 
     return {
@@ -78,45 +94,180 @@ class MarketDataService {
     };
   }
 
+  private mapIndianApiQuoteToStockQuote(quote: any, querySymbol: string): StockQuote {
+    const symbol = quote.tickerId || querySymbol;
+    const price = quote.currentPrice?.NSE || quote.currentPrice?.BSE || 0;
+    
+    let tickStatus: 'up' | 'down' | 'neutral' = 'neutral';
+    if (this.lastPrices[symbol]) {
+      if (price > this.lastPrices[symbol]) tickStatus = 'up';
+      else if (price < this.lastPrices[symbol]) tickStatus = 'down';
+    }
+    this.lastPrices[symbol] = price;
+
+    return {
+      symbol,
+      name: quote.companyName || symbol,
+      price: Number(price),
+      change: 0, 
+      changePercent: Number(quote.percentChange || 0),
+      marketCapCr: quote.keyMetrics?.MarketCap ? Number(quote.keyMetrics.MarketCap.replace(/[^0-9.]/g, '')) : 0,
+      peRatio: Number(quote.keyMetrics?.PE || 0),
+      pbRatio: Number(quote.keyMetrics?.PB || 0),
+      eps: 0, 
+      fiftyTwoWeekHigh: Number(quote.yearHigh || 0),
+      fiftyTwoWeekLow: Number(quote.yearLow || 0),
+      volume: 0,
+      exchange: 'NSE',
+      sector: quote.industry || 'Indian Equities',
+      timestamp: new Date().toISOString(),
+      tickStatus
+    };
+  }
+
   async getAllQuotes(): Promise<StockQuote[]> {
     try {
-      const quotes = await yahooFinance.quote(DEFAULT_SYMBOLS) as any[];
-      return quotes.map((q: any) => this.mapYahooQuoteToStockQuote(q));
+      const quotes = await Promise.all(DEFAULT_SYMBOLS.map(sym => this.getQuote(sym).catch(() => null)));
+      return quotes.filter(q => q !== null) as StockQuote[];
     } catch (error) {
       console.error('Error fetching all quotes:', error);
       return [];
     }
   }
 
-  async getQuote(symbolInput: string): Promise<StockQuote> {
-    try {
-      // Basic normalization: if it's an Indian stock without suffix, try adding .NS
-      let symbol = symbolInput.toUpperCase();
-      if (!symbol.includes('.') && DEFAULT_SYMBOLS.includes(`${symbol}.NS`)) {
-        symbol = `${symbol}.NS`;
+  async getQuote(symbol: string): Promise<StockQuote> {
+    let querySymbol = symbol.toUpperCase().trim();
+    const indianStocks = ['TCS', 'RELIANCE', 'INFY', 'HDFCBANK', 'ICICIBANK', 'TATAMOTORS', 'SBIN', 'WIPRO'];
+    if (indianStocks.includes(querySymbol)) {
+      querySymbol += '.NS';
+    }
+    const isIndian = querySymbol.endsWith('.NS') || querySymbol.endsWith('.BO');
+    
+    if (isIndian && process.env.INDIAN_API_KEY && process.env.INDIAN_API_KEY !== 'your_indian_api_key_here') {
+      try {
+        const response = await axios.get(`${INDIAN_API_BASE}/stock?name=${querySymbol}`, { headers: this.headers });
+        if (response.data) {
+          return this.mapIndianApiQuoteToStockQuote(response.data, querySymbol);
+        }
+      } catch (e) {
+         console.warn(`Indian API failed for ${querySymbol}, falling back to Finnhub/YF`);
       }
-      
-      const quote = await yahooFinance.quote(symbol) as any;
+    }
+
+    try {
+      const cleanSymbol = querySymbol.replace('.NS', '').replace('.BO', '');
+      const response = await axios.get(`https://finnhub.io/api/v1/quote?symbol=${cleanSymbol}&token=${FINNHUB_API_KEY}`);
+      if (response.data && response.data.c !== 0) {
+        const data = response.data;
+        const price = data.c;
+        let tickStatus: 'up' | 'down' | 'neutral' = 'neutral';
+        if (this.lastPrices[querySymbol]) {
+          if (price > this.lastPrices[querySymbol]) tickStatus = 'up';
+          else if (price < this.lastPrices[querySymbol]) tickStatus = 'down';
+        }
+        this.lastPrices[querySymbol] = price;
+        return {
+          symbol: querySymbol,
+          name: querySymbol,
+          price: price,
+          change: data.d || 0,
+          changePercent: data.dp || 0,
+          tickStatus,
+          fiftyTwoWeekHigh: data.h || 0,
+          fiftyTwoWeekLow: data.l || 0,
+          exchange: isIndian ? 'NSE' : 'US',
+          timestamp: new Date().toISOString(),
+          currency: isIndian ? 'INR' : 'USD'
+        };
+      }
+    } catch (e) {
+      console.warn(`Finnhub failed for ${querySymbol}, falling back to YF`);
+    }
+
+    try {
+      const quote = await yahooFinance.quote(querySymbol);
       return this.mapYahooQuoteToStockQuote(quote);
-    } catch (error) {
-      console.error(`Error fetching quote for ${symbolInput}:`, error);
-      throw new Error(`Failed to fetch quote for ${symbolInput}`);
+    } catch (error: any) {
+      console.error(`Error fetching quote for ${querySymbol}:`, error.message);
+      throw new Error(`Failed to fetch quote for ${querySymbol}`);
     }
   }
 
-  async getHistoricalPrices(symbolInput: string, period: string = '1Y'): Promise<HistoricalPrice[]> {
-    try {
-      let symbol = symbolInput.toUpperCase();
-      if (!symbol.includes('.') && DEFAULT_SYMBOLS.includes(`${symbol}.NS`)) {
-        symbol = `${symbol}.NS`;
-      }
+  async getHistoricalPrices(symbol: string, period: string = '1Y'): Promise<HistoricalPrice[]> {
+    let querySymbol = symbol.toUpperCase().trim();
+    const indianStocks = ['TCS', 'RELIANCE', 'INFY', 'HDFCBANK', 'ICICIBANK', 'TATAMOTORS', 'SBIN', 'WIPRO'];
+    if (indianStocks.includes(querySymbol)) {
+      querySymbol += '.NS';
+    }
+    const isIndian = querySymbol.endsWith('.NS') || querySymbol.endsWith('.BO');
+    
+    let indianPeriod = '1yr';
+    if (period === '1M') indianPeriod = '1mo';
+    if (period === '6M') indianPeriod = '6mo';
+    
+    if (isIndian && period !== '1D' && period !== '1W' && process.env.INDIAN_API_KEY && process.env.INDIAN_API_KEY !== 'your_indian_api_key_here') {
+        try {
+          const response = await axios.get(`${INDIAN_API_BASE}/historical_data?stock_name=${querySymbol}&period=${indianPeriod}&filter=price`, { headers: this.headers });
+          
+          if (response.data && response.data.datasets && response.data.datasets.length > 0) {
+            const priceDataset = response.data.datasets.find((d: any) => d.metric === 'Price');
+            if (priceDataset && priceDataset.values) {
+               return priceDataset.values.map((v: any) => {
+                  const dateStr = v[0];
+                  const priceVal = Number(v[1]);
+                  return {
+                    date: dateStr,
+                    time: dateStr,
+                    open: priceVal,
+                    high: priceVal,
+                    low: priceVal,
+                    close: priceVal,
+                    volume: 0
+                  };
+               });
+            }
+          }
+        } catch (e) {
+           console.warn(`Indian API historical failed for ${querySymbol}, falling back to Alpha Vantage/YF`);
+        }
+    }
 
+    try {
+      const cleanSymbol = querySymbol.replace('.NS', '').replace('.BO', '');
+      const avResponse = await axios.get(`https://www.alphavantage.co/query?function=TIME_SERIES_DAILY&symbol=${cleanSymbol}&apikey=${ALPHA_VANTAGE_API_KEY}`);
+      if (avResponse.data && avResponse.data['Time Series (Daily)']) {
+        const timeSeries = avResponse.data['Time Series (Daily)'];
+        const dates = Object.keys(timeSeries).sort();
+        
+        let daysToKeep = 365;
+        if (period === '1M') daysToKeep = 30;
+        if (period === '6M') daysToKeep = 180;
+        
+        const recentDates = dates.slice(-daysToKeep);
+        return recentDates.map(dateStr => {
+          const dayData = timeSeries[dateStr];
+          return {
+            date: dateStr,
+            time: dateStr,
+            open: Number(dayData['1. open']),
+            high: Number(dayData['2. high']),
+            low: Number(dayData['3. low']),
+            close: Number(dayData['4. close']),
+            volume: Number(dayData['5. volume'])
+          };
+        });
+      }
+    } catch (e) {
+      console.warn(`Alpha Vantage failed for ${querySymbol}, falling back to YF`);
+    }
+
+    try {
       const end = new Date();
       const start = new Date();
       let interval: '1d' | '1wk' | '1mo' | '1m' | '5m' = '1d';
 
       if (period === '1D') {
-        start.setDate(start.getDate() - 1); // Get past 1-2 days to ensure we have intraday ticks
+        start.setDate(start.getDate() - 5);
         interval = '5m';
       } else if (period === '1W') {
         start.setDate(start.getDate() - 7);
@@ -127,17 +278,17 @@ class MarketDataService {
       } else if (period === '6M') {
         start.setMonth(start.getMonth() - 6);
         interval = '1wk';
-      } else { // 1Y
+      } else { 
         start.setFullYear(start.getFullYear() - 1);
         interval = '1wk';
       }
 
       const queryOptions = { period1: start.toISOString(), period2: end.toISOString(), interval };
-      const result = await yahooFinance.chart(symbol, queryOptions as any) as any;
+      const result = await this.yf.chart(querySymbol, queryOptions as any) as any;
       
       if (!result.quotes || result.quotes.length === 0) return [];
 
-      return result.quotes.map((q: any) => {
+      let mapped = result.quotes.map((q: any) => {
         const dateObj = new Date(q.date);
         let label = dateObj.toISOString().split('T')[0];
         let timeStr = dateObj.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
@@ -152,8 +303,16 @@ class MarketDataService {
           volume: q.volume || 0
         };
       }).filter((q: any) => q.close > 0);
-    } catch (error) {
-      console.error(`Error fetching historical prices for ${symbolInput}:`, error);
+
+      // If it's a 1D chart and we fetched 5 days of data, filter only the last available day's data
+      if (period === '1D' && mapped.length > 0) {
+        const lastDate = mapped[mapped.length - 1].date;
+        mapped = mapped.filter((q: any) => q.date === lastDate);
+      }
+
+      return mapped;
+    } catch (error: any) {
+      console.error(`Error fetching historical prices for ${querySymbol}:`, error.message);
       return [];
     }
   }
@@ -169,7 +328,7 @@ class MarketDataService {
         '^GSPC': 'S&P 500'
       };
       
-      const quotes = await yahooFinance.quote(symbols) as any[];
+      const quotes = await this.yf.quote(symbols) as any[];
       
       return quotes.map((q: any) => {
         const change = q.regularMarketChange || 0;
@@ -184,8 +343,8 @@ class MarketDataService {
           isUp
         };
       });
-    } catch (error) {
-      console.error('Error fetching indices:', error);
+    } catch (error: any) {
+      console.error('Error fetching indices:', error.message);
       return [];
     }
   }
