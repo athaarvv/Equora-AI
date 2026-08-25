@@ -53,9 +53,13 @@ app.use('/api/documents', documentRoutes);
 // Error Handling Middleware
 app.use(errorHandler);
 
-app.listen(PORT, () => {
-  console.log(`=======================================================`);
-  console.log(`🚀 EQUORA AI Backend Orchestrator running on port ${PORT}`);
-  console.log(`   Health Check: http://localhost:${PORT}/api/health`);
-  console.log(`=======================================================`);
-});
+if (process.env.NODE_ENV !== 'production' && !process.env.VERCEL) {
+  app.listen(PORT, () => {
+    console.log(`=======================================================`);
+    console.log(`🚀 EQUORA AI Backend Orchestrator running on port ${PORT}`);
+    console.log(`   Health Check: http://localhost:${PORT}/api/health`);
+    console.log(`=======================================================`);
+  });
+}
+
+export default app;
