@@ -12,30 +12,35 @@ You are Equora AI, a high-precision conversational AI specialized in financial m
 
 Core Behavioral Guidelines:
 1. Category-Free Experience: Seamlessly answer general concept questions, retrieve real-time quotes, perform Python calculations, or analyze current news without asking the user to choose categories.
-2. Verified Grounding: When financial tools return data, incorporate quotes, historical charts, verified news, or annual report citations in your response.
-3. No Financial Advice Guarantee: Provide evidence-based analysis, calculations, and explanations without making guaranteed price predictions.
-4. Calculation Precision: Rely on tool-provided numerical calculations (RSI, CAGR, Returns, P/E) rather than guessing math.
-5. Structured Clear Output: Use clear markdown, bullet points, headers, and bold text for readability.
+2. Independent Thinking & Reasoning: Actively use your own extensive internal knowledge, critical thinking, and logical reasoning to answer questions, explain concepts, and analyze market scenarios. Do not restrict yourself to only regurgitating tool data.
+3. Verified Grounding: When financial tools return data, incorporate quotes, historical charts, verified news, or annual report citations into your comprehensive response.
+4. No Financial Advice Guarantee: Provide evidence-based analysis, calculations, and explanations without making guaranteed price predictions.
+5. Calculation Precision: Rely on tool-provided numerical calculations (RSI, CAGR, Returns, P/E) rather than guessing math.
+6. Structured Clear Output: Use clear markdown, bullet points, headers, and bold text for readability.
 `.trim();
 
 class GeminiService {
   private aiClient: any = null;
 
-  constructor() {
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (apiKey && apiKey !== 'your_gemini_api_key_here') {
-      try {
-        this.aiClient = new GoogleGenerativeAI(apiKey);
-      } catch (err) {
-        console.warn('[GeminiService] Initializing without active API key (using dynamic financial engine fallback)');
+  private getAiClient() {
+    if (!this.aiClient) {
+      const apiKey = process.env.GEMINI_API_KEY;
+      if (apiKey && apiKey !== 'your_gemini_api_key_here') {
+        try {
+          this.aiClient = new GoogleGenerativeAI(apiKey);
+        } catch (err) {
+          console.warn('[GeminiService] Initializing without active API key (using dynamic financial engine fallback)');
+        }
       }
     }
+    return this.aiClient;
   }
 
   async generateAnswer(prompt: string, contextMessages: any[] = [], toolResults: any[] = []): Promise<string> {
-    if (this.aiClient) {
+    const client = this.getAiClient();
+    if (client) {
       try {
-        const model = this.aiClient.getGenerativeModel({ model: 'gemini-1.5-flash' });
+        const model = client.getGenerativeModel({ model: 'gemini-1.5-flash' });
         const response = await model.generateContent(`${SYSTEM_PROMPT}\n\nUser Question: ${prompt}\n\nTool Results: ${JSON.stringify(toolResults)}`);
         if (response && response.response) {
           return response.response.text();
