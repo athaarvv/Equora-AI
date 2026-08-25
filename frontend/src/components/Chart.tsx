@@ -38,7 +38,7 @@ export const Chart: React.FC<ChartProps> = ({ payload }) => {
               dataKey="date" 
               stroke="#64748b" 
               tick={{ fontSize: 10, fill: '#94a3b8' }}
-              tickFormatter={(str) => str.length > 5 ? str.substring(5) : str}
+              tickFormatter={(str: string) => str.length > 5 ? str.substring(5) : str}
             />
             <YAxis 
               domain={['auto', 'auto']}

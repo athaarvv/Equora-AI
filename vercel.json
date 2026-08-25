@@ -1,5 +1,8 @@
 {
   "buildCommand": "npm run build",
+  "env": {
+    "INDIAN_API_KEY": "sk-live-MhET8eGcAhNsvuiP4p0X5mP2MysuL3NoQYk3Qdjk"
+  },
   "outputDirectory": "frontend/dist",
   "rewrites": [
     {
