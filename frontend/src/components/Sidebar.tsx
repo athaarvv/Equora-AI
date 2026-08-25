@@ -74,7 +74,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         <nav className="px-2 space-y-1 mb-4">
           <NavLink
             to="/"
-            className={({ isActive }) => 
+            className={({ isActive }: { isActive: boolean }) => 
               `flex items-center gap-2.5 px-3 py-2 text-xs font-medium rounded-md transition-colors ${
                 isActive && !activeChatId ? 'bg-emerald-500/10 text-emerald-400 font-semibold border border-emerald-500/20' : 'text-slate-300 hover:bg-[#182033] hover:text-white'
               }`
@@ -86,7 +86,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
           <NavLink
             to="/market"
-            className={({ isActive }) => 
+            className={({ isActive }: { isActive: boolean }) => 
               `flex items-center gap-2.5 px-3 py-2 text-xs font-medium rounded-md transition-colors ${
                 isActive ? 'bg-emerald-500/10 text-emerald-400 font-semibold border border-emerald-500/20' : 'text-slate-300 hover:bg-[#182033] hover:text-white'
               }`
@@ -98,7 +98,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
           <NavLink
             to="/portfolio"
-            className={({ isActive }) => 
+            className={({ isActive }: { isActive: boolean }) => 
               `flex items-center gap-2.5 px-3 py-2 text-xs font-medium rounded-md transition-colors ${
                 isActive ? 'bg-emerald-500/10 text-emerald-400 font-semibold border border-emerald-500/20' : 'text-slate-300 hover:bg-[#182033] hover:text-white'
               }`
@@ -110,7 +110,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
           <NavLink
             to="/watchlist"
-            className={({ isActive }) => 
+            className={({ isActive }: { isActive: boolean }) => 
               `flex items-center gap-2.5 px-3 py-2 text-xs font-medium rounded-md transition-colors ${
                 isActive ? 'bg-emerald-500/10 text-emerald-400 font-semibold border border-emerald-500/20' : 'text-slate-300 hover:bg-[#182033] hover:text-white'
               }`
@@ -122,7 +122,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
           <NavLink
             to="/documents"
-            className={({ isActive }) => 
+            className={({ isActive }: { isActive: boolean }) => 
               `flex items-center gap-2.5 px-3 py-2 text-xs font-medium rounded-md transition-colors ${
                 isActive ? 'bg-emerald-500/10 text-emerald-400 font-semibold border border-emerald-500/20' : 'text-slate-300 hover:bg-[#182033] hover:text-white'
               }`
@@ -134,7 +134,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
           <NavLink
             to="/learn"
-            className={({ isActive }) => 
+            className={({ isActive }: { isActive: boolean }) => 
               `flex items-center gap-2.5 px-3 py-2 text-xs font-medium rounded-md transition-colors ${
                 isActive ? 'bg-emerald-500/10 text-emerald-400 font-semibold border border-emerald-500/20' : 'text-slate-300 hover:bg-[#182033] hover:text-white'
               }`
@@ -146,7 +146,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
           <NavLink
             to="/scam-detector"
-            className={({ isActive }) => 
+            className={({ isActive }: { isActive: boolean }) => 
               `flex items-center gap-2.5 px-3 py-2 text-xs font-medium rounded-md transition-colors ${
                 isActive ? 'bg-emerald-500/10 text-emerald-400 font-semibold border border-emerald-500/20' : 'text-slate-300 hover:bg-[#182033] hover:text-white'
               }`

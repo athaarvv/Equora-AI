@@ -246,7 +246,7 @@ export const MarketPage: React.FC = () => {
                       domain={['auto', 'auto']}
                       stroke="#475569" 
                       tick={{ fontSize: 10, fill: '#94a3b8' }}
-                      tickFormatter={(val) => `${selectedQuote.exchange === 'NASDAQ' ? '$' : '₹'}${val}`}
+                      tickFormatter={(val: string | number) => `${selectedQuote.exchange === 'NASDAQ' ? '$' : '₹'}${val}`}
                     />
                     <Tooltip 
                       contentStyle={{ 
